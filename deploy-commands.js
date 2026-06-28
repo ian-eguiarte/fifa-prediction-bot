@@ -88,11 +88,74 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("userpredictions")
-    .setDescription("Show what a specific user predicted for each match.")
+    .setDescription("Show what a specific user predicted, with optional filters.")
     .addUserOption((option) =>
       option
         .setName("user")
         .setDescription("The user to check")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("stage")
+        .setDescription("Filter by match stage")
+        .setRequired(false)
+        .addChoices(
+          { name: "Group", value: "Group" },
+          { name: "Round of 32", value: "Round of 32" },
+          { name: "Round of 16", value: "Round of 16" },
+          { name: "Quarterfinal", value: "Quarterfinal" },
+          { name: "Semifinal", value: "Semifinal" },
+          { name: "Final", value: "Final" }
+        )
+    )
+    .addStringOption((option) =>
+      option
+        .setName("group")
+        .setDescription("Filter by group (group-stage matches only)")
+        .setRequired(false)
+        .addChoices(
+          { name: "A", value: "A" },
+          { name: "B", value: "B" },
+          { name: "C", value: "C" },
+          { name: "D", value: "D" },
+          { name: "E", value: "E" },
+          { name: "F", value: "F" },
+          { name: "G", value: "G" },
+          { name: "H", value: "H" },
+          { name: "I", value: "I" },
+          { name: "J", value: "J" },
+          { name: "K", value: "K" },
+          { name: "L", value: "L" }
+        )
+    )
+    .addStringOption((option) =>
+      option
+        .setName("team")
+        .setDescription("Filter by team name (partial match, e.g. mex)")
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("day")
+        .setDescription("Filter by match date, format YYYY-MM-DD")
+        .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("setresult")
+    .setDescription("Set or clear the correct result for a match (updates scores).")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addStringOption((option) =>
+      option
+        .setName("match_id")
+        .setDescription("Example: A-M3, R16-M2")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("result")
+        .setDescription("Winning option exactly as shown in the poll, or 'clear' to reset")
         .setRequired(true)
     )
 ].map((command) => command.toJSON());

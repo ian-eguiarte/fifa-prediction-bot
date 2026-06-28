@@ -1,2 +1,5 @@
 .env
 node_modules
+
+# Spreadsheet exports contain Discord user IDs + usernames (PII) — keep out of git.
+*.xlsx

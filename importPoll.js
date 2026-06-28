@@ -2,7 +2,12 @@ require("dotenv").config();
 
 const channelId = process.argv[2];
 const messageId = process.argv[3];
-const answerIds = process.argv[4].split(",");
+const answerIds = (process.argv[4] || "").split(",").filter(Boolean);
+const DEFAULT_APPS_SCRIPT_TIMEOUT_MS = 12000;
+const APPS_SCRIPT_TIMEOUT_MS = getPositiveInteger(
+  process.env.APPS_SCRIPT_TIMEOUT_MS,
+  DEFAULT_APPS_SCRIPT_TIMEOUT_MS
+);
 
 if (!channelId || !messageId || !answerIds.length) {
   console.log("Usage: node importPoll.js CHANNEL_ID MESSAGE_ID ANSWER_IDS");
@@ -59,18 +64,59 @@ async function sendImportToSheet(user, answerId) {
     answer_id: Number(answerId)
   };
 
-  const response = await fetch(process.env.APPS_SCRIPT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const text = await response.text();
+  const result = await postToAppsScript(payload);
 
   console.log(`${user.username} imported for answer ${answerId}`);
-  console.log(text);
+  console.log(result);
+}
+
+function getPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function postToAppsScript(payload) {
+  if (!process.env.APPS_SCRIPT_URL) {
+    throw new Error("APPS_SCRIPT_URL is not configured.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), APPS_SCRIPT_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(process.env.APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      throw new Error(`Apps Script returned invalid JSON: ${text}`);
+    }
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || text);
+    }
+
+    return result;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(
+        `Apps Script request timed out after ${Math.round(APPS_SCRIPT_TIMEOUT_MS / 1000)} seconds.`
+      );
+    }
+
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function main() {
