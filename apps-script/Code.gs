@@ -564,3 +564,68 @@ function getUserPredictions(ss, body) {
     predictions: predictions
   });
 }
+
+/**
+ * MAINTENANCE: run manually from the Apps Script editor (select this function
+ * and click Run). Removes duplicate (user_id, match_id) rows in
+ * CurrentPredictions, keeping the row with the most recent updated_at (col E) —
+ * i.e. the user's final vote in a single-select poll. Duplicates were created
+ * by vote-change races before LockService was added; this reconciles existing
+ * data. Safe to run repeatedly (a no-op once clean). Logs how many it removed.
+ */
+function dedupeCurrentPredictions() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const sheet = mustGetSheet(ss, "CurrentPredictions");
+    const values = sheet.getDataRange().getValues();
+
+    // Map "user_id|match_id" -> { keepRow, keepTime, deleteRows: [] }
+    const groups = {};
+
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      const userId = String(row[0] || "");
+      const matchId = String(row[2] || "");
+
+      if (!userId || !matchId) {
+        continue;
+      }
+
+      const sheetRow = i + 1;
+      const updatedAt = row[4] instanceof Date ? row[4].getTime() : 0;
+      const key = `${userId}|${matchId}`;
+
+      if (!groups[key]) {
+        groups[key] = { keepRow: sheetRow, keepTime: updatedAt, deleteRows: [] };
+        continue;
+      }
+
+      const g = groups[key];
+      if (updatedAt >= g.keepTime) {
+        // This row is newer — keep it, drop the previous keeper.
+        g.deleteRows.push(g.keepRow);
+        g.keepRow = sheetRow;
+        g.keepTime = updatedAt;
+      } else {
+        g.deleteRows.push(sheetRow);
+      }
+    }
+
+    // Collect every row to delete, then remove bottom-up so indices stay valid.
+    const toDelete = [];
+    Object.keys(groups).forEach((key) => {
+      groups[key].deleteRows.forEach((r) => toDelete.push(r));
+    });
+    toDelete.sort((a, b) => b - a);
+
+    toDelete.forEach((r) => sheet.deleteRow(r));
+
+    Logger.log(`Removed ${toDelete.length} duplicate prediction row(s).`);
+    return toDelete.length;
+  } finally {
+    lock.releaseLock();
+  }
+}
